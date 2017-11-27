@@ -1497,7 +1497,50 @@ BESM6 = ${BESM6D}/besm6_cpu.c ${BESM6D}/besm6_sys.c ${BESM6D}/besm6_mmu.c \
         ${BESM6D}/besm6_punch.c ${BESM6D}/besm6_punchcard.c
 
 ifneq (,$(BESM6_BUILD))
-    ifneq (,$(and ${VIDEO_LDFLAGS}, $(or $(and $(call find_include,SDL2/SDL_ttf),$(call find_lib,SDL2_ttf)), $(and $(call find_include,SDL/SDL_ttf),$(call find_lib,SDL_ttf)))))
+  ifneq (,${VIDEO_LDFLAGS})
+    # Try to find SDL2_ttf first, with pkg-config, fallback to find_{lib,include}
+    # Make sure we don't mix up SDL_ttf with SDL2 or vice-versa
+    ifneq (,$(findstring SDL2,${VIDEO_LDFLAGS}))
+      ifneq (,$(shell which pkg-config))
+        ifneq (,$(shell pkg-config --print-variables SDL2_ttf))
+          SDL_TTF_CCDEFS := $(shell pkg-config --cflags SDL2_ttf)
+          SDL_TTF_LDFLAGS := $(shell pkg-config --libs SDL2_ttf)
+          SDL_TTF_DETECT := pkg-config
+          SDL_TTF_MAJ := 2
+        endif
+      endif
+      ifeq (,$(SDL_TTF_DETECT))
+        ifneq (,$(call find_include,SDL2/SDL_ttf))
+          ifneq (,$(call find_lib,SDL2_ttf))
+            SDL_TTF_CCDEFS := -I$(abspath $(dir $(call find_include,SDL2/SDL_ttf)))
+            SDL_TTF_LDFLAGS := -L$(abspath $(dir $(call find_lib,SDL2_ttf))) -lSDL2_ttf
+            SDL_TTF_DETECT := find_lib
+            SDL_TTF_MAJ := 2
+          endif
+        endif
+      endif
+    else
+      # Try to find SDL_ttf then if we use SDL
+      ifneq (,$(shell which pkg-config))
+        ifneq (,$(shell pkg-config --print-variables SDL_ttf))
+          SDL_TTF_CCDEFS := $(shell pkg-config --cflags SDL_ttf)
+          SDL_TTF_LDFLAGS := $(shell pkg-config --libs SDL_ttf)
+          SDL_TTF_DETECT := pkg-config
+        endif
+      endif
+      ifeq (,$(SDL_TTF_DETECT))
+        ifneq (,$(call find_include,SDL/SDL_ttf))
+          ifneq (,$(call find_lib,SDL_ttf))
+            SDL_TTF_CCDEFS := -I$(abspath $(dir $(call find_include,SDL/SDL_ttf)))
+            SDL_TTF_LDFLAGS := -L$(abspath $(dir $(call find_lib,SDL_ttf))) -lSDL_ttf
+            SDL_TTF_DETECT := find_lib
+          endif
+        endif
+      endif
+    endif
+  endif
+
+    ifneq (,$(and ${VIDEO_LDFLAGS}, ${SDL_TTF_DETECT}))
         FONTPATH += /usr/share/fonts /Library/Fonts /usr/lib/jvm /System/Library/Frameworks/JavaVM.framework/Versions C:/Windows/Fonts
         FONTPATH := $(dir $(foreach dir,$(strip $(FONTPATH)),$(wildcard $(dir)/.)))
         FONTNAME += DejaVuSans.ttf LucidaSansRegular.ttf FreeSans.ttf AppleGothic.ttf tahoma.ttf
@@ -1522,14 +1565,10 @@ ifneq (,$(BESM6_BUILD))
       $(info *** No SDL ttf support available.  BESM-6 video panel disabled.)
       $(info ***)
       BESM6_OPT = -I ${BESM6D} -DUSE_INT64 
-  else ifneq (,$(and $(findstring SDL2,${VIDEO_LDFLAGS}),$(call find_include,SDL2/SDL_ttf),$(call find_lib,SDL2_ttf)))
-      $(info using libSDL2_ttf: $(call find_lib,SDL2_ttf) $(call find_include,SDL2/SDL_ttf))
+  else ifneq (,${SDL_TTF_DETECT})
+      $(info using libSDL${SDL_TTF_MAJ}_ttf (${SDL_TTF_DETECT}): ${SDL_TTF_CCDEFS} ${SDL_TTF_LDFLAGS})
       $(info ***)
-      BESM6_OPT = -I ${BESM6D} -DFONTFILE=${FONTFILE} -DUSE_INT64 ${VIDEO_CCDEFS} ${VIDEO_LDFLAGS} -lSDL2_ttf
-  else ifneq (,$(and $(call find_include,SDL/SDL_ttf),$(call find_lib,SDL_ttf)))
-      $(info using libSDL_ttf: $(call find_lib,SDL_ttf) $(call find_include,SDL/SDL_ttf))
-      $(info ***)
-      BESM6_OPT = -I ${BESM6D} -DFONTFILE=${FONTFILE} -DUSE_INT64 ${VIDEO_CCDEFS} ${VIDEO_LDFLAGS} -lSDL_ttf
+      BESM6_OPT = -I ${BESM6D} -DFONTFILE=${FONTFILE} -DUSE_INT64 ${VIDEO_CCDEFS} ${SDL_TTF_CCDEFS} ${VIDEO_LDFLAGS} ${SDL_TTF_LDFLAGS}
   else
       BESM6_OPT = -I ${BESM6D} -DUSE_INT64 
   endif
