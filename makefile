@@ -502,29 +502,50 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
       LIBEXTSAVE := $(LIBEXT)
       LIBEXT = dll.a
     endif
+    # try to find SDL2 first, with the config script, fallback to find_{lib,include}
     ifneq (,$(shell which sdl2-config))
-      VIDEO_CCDEFS += -DHAVE_LIBSDL -DUSE_SIM_VIDEO `sdl2-config --cflags`
-      VIDEO_LDFLAGS += `sdl2-config --libs`
-      VIDEO_FEATURES = - video capabilities provided by libSDL2 (Simple Directmedia Layer)
+      SDL_CCDEFS := $(shell sdl2-config --cflags)
+      SDL_LDFLAGS := $(shell sdl2-config --libs)
+      SDL_DETECT := sdl2-config
+      SDL_MAJ := 2
+    endif
+    ifeq (,$(SDL_DETECT))
+      ifneq (,$(call find_include,SDL2/SDL))
+        ifneq (,$(call find_lib,SDL2))
+          SDL_CCDEFS := -I$(abspath $(dir $(call find_include,SDL2/SDL)))
+          SDL_LDFLAGS := -L$(abspath $(dir $(call find_lib,SDL2))) -lSDL2
+          SDL_DETECT := find_lib
+          SDL_MAJ := 2
+        endif
+      endif
+    endif
+    # fall back to SDL 1.x, either from sdl-config or find_lib.
+    ifeq (,$(SDL_DETECT))
+      ifneq (,$(shell which sdl-config))
+        SDL_CCDEFS := $(shell sdl-config --cflags)
+        SDL_LDFLAGS := $(shell sdl-config --libs)
+        SDL_DETECT := sdl-config
+      endif
+    endif
+    ifeq (,$(SDL_DETECT))
+      ifneq (,$(call find_include,SDL/SDL))
+        ifneq (,$(call find_lib,SDL))
+          SDL_CCDEFS := -I$(abspath $(dir $(call find_include,SDL/SDL)))
+          SDL_LDFLAGS := -L$(abspath $(dir $(call find_lib,SDL))) -lSDL
+          SDL_DETECT := find_lib
+        endif
+      endif
+    endif
+    ifneq (,$(SDL_DETECT))
+      VIDEO_CCDEFS += -DHAVE_LIBSDL -DUSE_SIM_VIDEO $(SDL_CCDEFS)
+      VIDEO_LDFLAGS += $(SDL_LDFLAGS)
+      VIDEO_FEATURES = - video capabilities provided by libSDL${SDL_MAJ} (Simple Directmedia Layer)
       DISPLAYL = ${DISPLAYD}/display.c $(DISPLAYD)/sim_ws.c
       DISPLAYVT = ${DISPLAYD}/vt11.c
       DISPLAY_OPT += -DUSE_DISPLAY $(VIDEO_CCDEFS) $(VIDEO_LDFLAGS)
-      $(info using libSDL2: $(call find_include,SDL2/SDL))
+      $(info using libSDL${SDL_MAJ} (${SDL_DETECT}): $(SDL_CCDEFS))
       ifeq (Darwin,$(OSTYPE))
         VIDEO_CCDEFS += -DSDL_MAIN_AVAILABLE
-      endif
-    else
-      ifneq (,$(shell which sdl-config))
-        VIDEO_CCDEFS += -DHAVE_LIBSDL -DUSE_SIM_VIDEO `sdl-config --cflags`
-        VIDEO_LDFLAGS += `sdl-config --libs`
-        VIDEO_FEATURES = - video capabilities provided by libSDL (Simple Directmedia Layer)
-        DISPLAYL = ${DISPLAYD}/display.c $(DISPLAYD)/sim_ws.c
-        DISPLAYVT = ${DISPLAYD}/vt11.c
-        DISPLAY_OPT += -DUSE_DISPLAY $(VIDEO_CCDEFS) $(VIDEO_LDFLAGS)
-        $(info using libSDL: $(call find_include,SDL/SDL))
-        ifeq (Darwin,$(OSTYPE))
-          VIDEO_CCDEFS += -DSDL_MAIN_AVAILABLE
-        endif
       endif
     endif
     ifeq (cygwin,$(OSTYPE))
